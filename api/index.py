@@ -127,7 +127,14 @@ def init_db():
             exists = conn.run("SELECT id FROM users WHERE username = 'admin'")
             if not exists:
                 hpw = generate_password_hash('admin123')
-                conn.run("INSERT INTO users (username, password, full_name, is_active) VALUES (:u, :p, :f, :a)", u='admin', p=hpw, f='Super Admin', a=1)
+                res = conn.run("INSERT INTO users (username, password, full_name, is_active) VALUES (:u, :p, :f, :a) RETURNING id", u='admin', p=hpw, f='Super Admin', a=1)
+                admin_id = res[0][0]
+            else:
+                admin_id = exists[0][0]
+                
+            has_settings = conn.run("SELECT id FROM settings WHERE user_id = :u", u=admin_id)
+            if not has_settings:
+                conn.run("INSERT INTO settings (user_id, activity_name, activity_schedule) VALUES (:u, :n, :s)", u=admin_id, n="Nama Kegiatan Baru", s="2024-01-01T08:00")
             
             conn.run("CREATE TABLE IF NOT EXISTS settings (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, activity_name TEXT, activity_schedule TEXT, theme_type TEXT DEFAULT 'gradient_animated', theme_color_1 TEXT DEFAULT '#4f46e5', theme_color_2 TEXT DEFAULT '#06b6d4', theme_preset TEXT DEFAULT 'ocean', theme_animation TEXT DEFAULT 'flow')")
             conn.run("CREATE TABLE IF NOT EXISTS logos (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, filename TEXT NOT NULL)")
@@ -140,9 +147,17 @@ def init_db():
                 except: pass
             
             cur.execute("SELECT id FROM users WHERE username = 'admin'")
-            if not cur.fetchone():
+            exists = cur.fetchone()
+            if not exists:
                 hpw = generate_password_hash('admin123')
                 cur.execute("INSERT INTO users (username, password, full_name, is_active) VALUES (?, ?, ?, ?)", ('admin', hpw, 'Super Admin', 1))
+                admin_id = cur.lastrowid
+            else:
+                admin_id = exists['id']
+                
+            cur.execute("SELECT id FROM settings WHERE user_id = ?", (admin_id,))
+            if not cur.fetchone():
+                cur.execute("INSERT INTO settings (user_id, activity_name, activity_schedule) VALUES (?, ?, ?)", (admin_id, "Nama Kegiatan Baru", "2024-01-01T08:00"))
             
             cur.execute("CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, activity_name TEXT, activity_schedule TEXT, theme_type TEXT DEFAULT 'gradient_animated', theme_color_1 TEXT DEFAULT '#4f46e5', theme_color_2 TEXT DEFAULT '#06b6d4', theme_preset TEXT DEFAULT 'ocean', theme_animation TEXT DEFAULT 'flow')")
             cur.execute("CREATE TABLE IF NOT EXISTS logos (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, filename TEXT NOT NULL)")
@@ -282,12 +297,12 @@ def reset_logos():
 @app.route('/api/pending-users')
 def get_pending_users():
     if 'user_id' not in session or session['username'] != 'admin': return jsonify([]), 403
-    return jsonify(query_db('SELECT id, username, full_name, phone_number, verification_code, raw_password FROM users WHERE is_active = 0 AND username != "admin"'))
+    return jsonify(query_db("SELECT id, username, full_name, phone_number, verification_code, raw_password FROM users WHERE is_active = 0 AND username != 'admin'"))
 
 @app.route('/api/active-users')
 def get_active_users():
     if 'user_id' not in session or session['username'] != 'admin': return jsonify([]), 403
-    return jsonify(query_db('SELECT id, username, full_name, phone_number, last_login FROM users WHERE is_active = 1 AND is_banned = 0 AND username != "admin"'))
+    return jsonify(query_db("SELECT id, username, full_name, phone_number, last_login FROM users WHERE is_active = 1 AND is_banned = 0 AND username != 'admin'"))
 
 @app.route('/api/admin/ban', methods=['POST'])
 def ban_user():
