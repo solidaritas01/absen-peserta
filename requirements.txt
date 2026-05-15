@@ -3,4 +3,4 @@ pandas
 openpyxl
 qrcode[pil]
 flask-cors
-psycopg2-binary
+pg8000
