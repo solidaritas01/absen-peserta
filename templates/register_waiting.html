@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Menunggu Verifikasi</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="theme-midnight">
+    <div class="container" style="max-width: 500px; margin-top: 15vh;">
+        <div class="glass-card" style="text-align: center;">
+            <h2 class="gradient-text">Hampir Selesai!</h2>
+            <p style="color: var(--text-muted); margin-bottom: 2rem;">
+                Untuk mencegah penipuan, Anda **WAJIB** mengirim pesan konfirmasi ke WhatsApp Admin agar nomor Anda terverifikasi sebagai pemilik sah.
+            </p>
+            
+            <div style="background: rgba(255,255,255,0.05); padding: 1.5rem; border-radius: 12px; margin-bottom: 2rem; border: 1px dashed var(--glass-border);">
+                <a href="{{ wa_url }}" target="_blank" class="btn btn-primary" style="background: #25d366; border: none; width: 100%; margin-bottom: 1rem;">
+                    <i class="fab fa-whatsapp"></i> KIRIM DATA KE ADMIN
+                </a>
+                <p style="font-size: 0.8rem; color: var(--text-muted);">Klik tombol di atas untuk mengirim data pendaftaran Anda. Admin akan membalas dengan kode verifikasi.</p>
+            </div>
+            
+            <a href="/verify?username={{ username }}" class="btn btn-secondary" style="width: 100%;">
+                SAYA SUDAH MENERIMA KODE
+            </a>
+            
+            <p style="margin-top: 2rem; font-size: 0.8rem; color: var(--text-muted);">
+                Ada masalah? <a href="https://wa.me/081249132140" style="color: var(--secondary); text-decoration: none;">Hubungi Admin</a>
+            </p>
+        </div>
+    </div>
+    
+    <style>
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+    </style>
+</body>
+</html>

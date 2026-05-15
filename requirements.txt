@@ -1,0 +1,5 @@
+flask
+pandas
+openpyxl
+qrcode[pil]
+flask-cors

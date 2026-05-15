@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Absensi Peserta</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        const targetUserId = "{{ target_user_id }}";
+        const targetUsername = "{{ target_username }}";
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="header-section">
+            <div class="logo-container" id="display-logo" style="width: auto; border-radius: 0; border: none; gap: 1rem; flex-wrap: wrap;">
+                <!-- Logos will be loaded here -->
+                <i class="fas fa-calendar-check" style="font-size: 3rem; color: var(--primary);"></i>
+            </div>
+            <h1 id="display-activity-name" class="gradient-text">Memuat Kegiatan...</h1>
+            <p id="display-schedule" style="color: var(--text-muted);"></p>
+        </div>
+
+        <div class="glass-card" style="max-width: 600px; margin: 0 auto;">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('masuk')">Menu Masuk</button>
+                <button class="tab-btn" onclick="switchTab('izin')">Menu Izin</button>
+            </div>
+
+            <div id="tab-masuk" class="tab-content active">
+                <form id="form-masuk">
+                    <div class="form-group search-wrapper">
+                        <label for="search-name-masuk">Cari Nama Anda</label>
+                        <input type="text" id="search-name-masuk" list="participant-list" placeholder="Ketik nama untuk mencari..." required>
+                        <datalist id="participant-list"></datalist>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%;">Submit Masuk</button>
+                </form>
+            </div>
+
+            <div id="tab-izin" class="tab-content">
+                <form id="form-izin">
+                    <div class="form-group search-wrapper">
+                        <label for="search-name-izin">Cari Nama Anda</label>
+                        <input type="text" id="search-name-izin" list="participant-list" placeholder="Ketik nama untuk mencari..." required>
+                    </div>
+                    <div class="form-group">
+                        <label for="reason-izin">Alasan Izin</label>
+                        <textarea id="reason-izin" rows="3" placeholder="Berikan alasan izin..." required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-secondary" style="width: 100%;">Submit Izin</button>
+                </form>
+            </div>
+        </div>
+        
+    </div>
+
+    <!-- Modal Success -->
+    <div class="modal-overlay" id="modal-success">
+        <div class="glass-card modal">
+            <div class="modal-icon">
+                <i class="fas fa-check-circle"></i>
+            </div>
+            <h2 id="modal-title">Selamat Datang!</h2>
+            <p id="modal-message">Presensi anda berhasil dicatat.</p>
+            <button class="btn btn-primary" style="margin-top: 2rem; width: 100%;" onclick="closeModal()">Selesai</button>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/attendance.js') }}"></script>
+</body>
+</html>

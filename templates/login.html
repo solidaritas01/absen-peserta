@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Absensi Peserta</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="theme-midnight">
+    <div class="container" style="max-width: 450px; margin-top: 10vh;">
+        <div class="glass-card" style="text-align: center;">
+            <div class="logo-container">
+                <i class="fas fa-user-lock" style="font-size: 3rem; color: var(--primary);"></i>
+            </div>
+            <h2 class="gradient-text">Selamat Datang</h2>
+            <p style="color: var(--text-muted); margin-bottom: 2rem;">Silakan masuk ke dashboard Anda</p>
+            
+            <form action="/login" method="POST" autocomplete="off">
+                {% if error %}
+                <span class="error-message"><i class="fas fa-exclamation-circle"></i> {{ error }}</span>
+                {% endif %}
+                <div class="form-group" style="text-align: left;">
+                    <label><i class="fas fa-user"></i> Username</label>
+                    <input type="text" name="username" required placeholder="Username" autocomplete="off" class="{{ 'error' if error }}">
+                </div>
+                <div class="form-group" style="text-align: left; position: relative;">
+                    <label><i class="fas fa-key"></i> Password</label>
+                    <div style="position: relative;">
+                        <input type="password" id="login-password" name="password" required placeholder="Password" autocomplete="new-password" class="{{ 'error' if error }}" style="padding-right: 45px;">
+                        <i class="fas fa-eye" id="toggle-password" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--text-muted);"></i>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+                    MASUK SEKARANG
+                </button>
+            </form>
+            
+            <script>
+                document.getElementById('toggle-password').addEventListener('click', function() {
+                    const pwd = document.getElementById('login-password');
+                    if (pwd.type === 'password') {
+                        pwd.type = 'text';
+                        this.classList.replace('fa-eye', 'fa-eye-slash');
+                    } else {
+                        pwd.type = 'password';
+                        this.classList.replace('fa-eye-slash', 'fa-eye');
+                    }
+                });
+            </script>
+            
+            <p style="margin-top: 2rem; font-size: 0.9rem; color: var(--text-muted);">
+                Belum punya akun? <a href="/register" style="color: var(--secondary); font-weight: 600; text-decoration: none;">Daftar di sini</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Absensi</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header-section" style="text-align: left; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <h1 class="gradient-text" style="margin-bottom: 0;">Admin Dashboard</h1>
+                <p style="color: var(--text-muted); font-size: 0.9rem;">Selamat datang, <strong style="color: var(--secondary);">{{ username }}</strong></p>
+            </div>
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                <a href="/presensi/{{ username }}" target="_blank" class="btn btn-secondary">
+                    <i class="fas fa-external-link-alt"></i> Buka Halaman Absen
+                </a>
+                <a href="/logout" class="btn btn-danger" style="background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger); color: var(--danger); padding: 0.8rem 1.2rem;">
+                    <i class="fas fa-sign-out-alt"></i> Logout
+                </a>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="glass-card stat-item">
+                <div class="stat-value" id="stat-total">0</div>
+                <div class="stat-label">Total Peserta</div>
+            </div>
+            <div class="glass-card stat-item">
+                <div class="stat-value" id="stat-hadir" style="color: var(--success);">0</div>
+                <div class="stat-label">Masuk</div>
+            </div>
+            <div class="glass-card stat-item">
+                <div class="stat-value" id="stat-izin" style="color: var(--warning);">0</div>
+                <div class="stat-label">Izin</div>
+            </div>
+            <div class="glass-card stat-item">
+                <div class="stat-value" id="stat-belum" style="color: var(--danger);">0</div>
+                <div class="stat-label">Belum Masuk</div>
+            </div>
+        </div>
+        
+        <!-- Verification Section (Only for Admin) -->
+        {% if username == 'admin' %}
+        <div class="glass-card" id="section-verification" style="margin-bottom: 2rem;">
+            <h3><i class="fas fa-user-check"></i> Verifikasi Pendaftar Baru</h3>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nama Lengkap</th>
+                            <th>Username</th>
+                            <th>No HP</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-pending">
+                        <!-- Pending users will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Active Users Management (Only for Admin) -->
+        {% if username == 'admin' %}
+        <div class="glass-card" id="section-active-users" style="margin-bottom: 2rem;">
+            <h3><i class="fas fa-users-cog"></i> Kelola Pengguna Aktif</h3>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nama Lengkap</th>
+                            <th>Username</th>
+                            <th>Terakhir Login</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-active-users">
+                        <!-- Active users will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+            <!-- Settings Section -->
+            <div class="glass-card">
+                <h3><i class="fas fa-cog"></i> Pengaturan Kegiatan</h3>
+                <form id="form-settings">
+                    <div class="form-group">
+                        <label>Nama Kegiatan</label>
+                        <input type="text" id="input-activity-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Jadwal Kegiatan (Mulai)</label>
+                        <input type="datetime-local" id="input-activity-schedule" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Logo Kegiatan (Hanya .png, bisa pilih banyak)</label>
+                        <input type="file" id="input-activity-logo" accept=".png" multiple>
+                    </div>
+                    <hr style="border: 0; border-top: 1px solid var(--glass-border); margin: 1.5rem 0;">
+                    <h4><i class="fas fa-palette"></i> Tema Halaman</h4>
+                    <div class="form-group">
+                        <label>Tipe Latar Belakang</label>
+                        <select id="input-theme-type" onchange="toggleThemeOptions()">
+                            <option value="solid">Solid (Satu Warna)</option>
+                            <option value="gradient">Gradien (Dua Warna)</option>
+                            <option value="gradient_animated">Gradien Animasi (Custom)</option>
+                            <option value="preset">Preset Animasi (Tinggal Pilih)</option>
+                        </select>
+                    </div>
+
+                    <div id="theme-custom-colors" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                        <div class="form-group">
+                            <label>Warna 1</label>
+                            <input type="color" id="input-theme-color1" style="height: 45px; padding: 2px;">
+                        </div>
+                        <div class="form-group" id="group-color2">
+                            <label>Warna 2</label>
+                            <input type="color" id="input-theme-color2" style="height: 45px; padding: 2px;">
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="theme-presets" style="display: none;">
+                        <label>Pilih Preset Animasi</label>
+                        <select id="input-theme-preset">
+                            <option value="ocean">Ocean Blue (Segar)</option>
+                            <option value="sunset">Sunset Glow (Hangat)</option>
+                            <option value="emerald">Emerald Forest (Hijau)</option>
+                            <option value="midnight">Midnight City (Gelap)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="theme-animation-style" style="display: none;">
+                        <label>Gaya Animasi Gradien</label>
+                        <select id="input-theme-animation">
+                            <option value="flow">Flow (Mengalir Diagonal)</option>
+                            <option value="wave">Wave (Gelombang Vertikal)</option>
+                            <option value="zoom">Zoom (Pulsasi Warna)</option>
+                        </select>
+                    </div>
+
+                    <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+                        <button type="submit" class="btn btn-primary" style="flex: 1;">Simpan Perubahan</button>
+                        <button type="button" class="btn btn-danger" onclick="resetLogos()" title="Hapus semua logo">
+                            <i class="fas fa-undo"></i> Reset Logo
+                        </button>
+                    </div>
+                </form>
+                
+                <div style="margin-top: 2rem; text-align: center;">
+                    <h4>QR Code Absen</h4>
+                    <img id="qr-code-img" src="/api/qrcode" alt="QR Code" style="width: 150px; margin: 1rem 0; border: 5px solid white; border-radius: 10px;">
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">Scan QR Code ini untuk membuka halaman absen</p>
+                    <a href="/presensi/{{ username }}" target="_blank" class="btn btn-secondary" style="width: 100%;">
+                        <i class="fas fa-link"></i> Masuk via Link Langsung
+                    </a>
+                </div>
+            </div>
+
+            <!-- Data Management Section -->
+            <div class="glass-card">
+                <h3><i class="fas fa-database"></i> Kelola Data</h3>
+                <div style="display: flex; flex-direction: column; gap: 1rem;">
+                    <div class="form-group">
+                        <label>Import Data Peserta (Excel)</label>
+                        <input type="file" id="input-import-excel" accept=".xlsx, .xls">
+                    </div>
+                    <button class="btn btn-secondary" onclick="importExcel()" style="width: 100%;">
+                        <i class="fas fa-file-import"></i> Import Excel
+                    </button>
+                    <hr style="border: 0; border-top: 1px solid var(--glass-border); margin: 0.5rem 0;">
+                    <button class="btn btn-secondary" onclick="exportExcel()" style="width: 100%;">
+                        <i class="fas fa-file-export"></i> Export Excel (Laporan)
+                    </button>
+                    <button class="btn btn-danger" onclick="resetData()" style="width: 100%; margin-top: 1rem;">
+                        <i class="fas fa-trash-alt"></i> Reset/Hapus Semua Data
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Participants Table -->
+        <div class="glass-card">
+            <h3><i class="fas fa-users"></i> Daftar Peserta</h3>
+            <div class="table-container">
+                <table id="table-participants">
+                    <thead>
+                        <tr>
+                            <th>Nama Peserta</th>
+                            <th>Status</th>
+                            <th>Waktu Masuk</th>
+                            <th>Keterlambatan</th>
+                            <th>Keterangan Izin</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-participants">
+                        <!-- Rows will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+</body>
+</html>

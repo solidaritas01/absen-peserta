@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daftar Akun - Absensi Peserta</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="theme-midnight">
+    <div class="container" style="max-width: 500px; margin-top: 5vh;">
+        <div class="glass-card">
+            <div style="text-align: center; margin-bottom: 2rem;">
+                <i class="fas fa-user-plus" style="font-size: 3rem; color: var(--secondary);"></i>
+                <h2 class="gradient-text">Daftar Akun Baru</h2>
+                <p style="color: var(--text-muted);">Lengkapi data profil Anda</p>
+            </div>
+            
+            <form action="/register" method="POST" autocomplete="off">
+                <div class="form-group">
+                    <label><i class="fas fa-id-card"></i> Nama Lengkap</label>
+                    <input type="text" name="full_name" required placeholder="Nama Lengkap" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label><i class="fas fa-map-marker-alt"></i> Alamat</label>
+                    <input type="text" name="address" required placeholder="Alamat" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label><i class="fas fa-phone"></i> Nomor WhatsApp</label>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <select name="country_code" id="country-code" style="width: 100px; flex-shrink: 0;">
+                            <option value="62" selected>🇮🇩 +62</option>
+                            <option value="60">🇲🇾 +60</option>
+                            <option value="65">🇸🇬 +65</option>
+                            <option value="1">🇺🇸 +1</option>
+                            <option value="44">🇬🇧 +44</option>
+                            <option value="966">🇸🇦 +966</option>
+                            <option value="81">🇯🇵 +81</option>
+                        </select>
+                        <input type="text" name="phone_number" id="phone-number" required placeholder="812345678" autocomplete="off" oninput="this.value = this.value.replace(/[^0-9]/g, '')">
+                    </div>
+                    <small style="color: var(--text-muted); font-size: 0.75rem;">Contoh: 812xxxx (Tanpa angka 0 di depan)</small>
+                </div>
+                <hr style="border: 0; border-top: 1px solid var(--glass-border); margin: 1.5rem 0;">
+                <div class="form-group">
+                    <label><i class="fas fa-user"></i> Pilih Username</label>
+                    <input type="text" name="username" required placeholder="Username" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label><i class="fas fa-key"></i> Password</label>
+                    <div style="position: relative;">
+                        <input type="password" id="reg-password" name="password" required placeholder="Password" autocomplete="new-password" style="padding-right: 45px;">
+                        <i class="fas fa-eye" id="toggle-reg-password" style="position: absolute; right: 15px; top: 50%; transform: translateY(-50%); cursor: pointer; color: var(--text-muted);"></i>
+                    </div>
+                </div>
+                <button type="submit" id="btn-register" class="btn btn-primary" style="width: 100%; margin-top: 1rem; background: var(--secondary);" disabled>
+                    DAFTAR SEKARANG
+                </button>
+            </form>
+
+            <script>
+                const form = document.querySelector('form');
+                const btn = document.getElementById('btn-register');
+                const inputs = form.querySelectorAll('input[required]');
+
+                function checkForm() {
+                    let allFilled = true;
+                    inputs.forEach(input => {
+                        if (!input.value.trim()) allFilled = false;
+                    });
+                    btn.disabled = !allFilled;
+                }
+
+                inputs.forEach(input => {
+                    input.addEventListener('input', checkForm);
+                });
+
+                document.getElementById('toggle-reg-password').addEventListener('click', function() {
+                    const pwd = document.getElementById('reg-password');
+                    if (pwd.type === 'password') {
+                        pwd.type = 'text';
+                        this.classList.replace('fa-eye', 'fa-eye-slash');
+                    } else {
+                        pwd.type = 'password';
+                        this.classList.replace('fa-eye-slash', 'fa-eye');
+                    }
+                });
+            </script>
+            
+            <p style="margin-top: 2rem; font-size: 0.9rem; text-align: center; color: var(--text-muted);">
+                Sudah punya akun? <a href="/login" style="color: var(--primary); font-weight: 600; text-decoration: none;">Login di sini</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>

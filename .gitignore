@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+ENV/
+
+# Database
+database.db
+*.sqlite3
+
+# Vercel
+.vercel/
+
+# Environment variables
+.env
+.env.local

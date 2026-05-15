@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pendaftaran Berhasil</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="theme-midnight">
+    <div class="container" style="max-width: 500px; margin-top: 15vh;">
+        <div class="glass-card" style="text-align: center;">
+            <div class="logo-container">
+                <i class="fas fa-check-circle" style="font-size: 4rem; color: var(--success);"></i>
+            </div>
+            <h2 class="gradient-text">Pendaftaran Berhasil!</h2>
+            <p style="color: var(--text-muted); margin-bottom: 2rem;">
+                Akun Anda telah dibuat. Langkah terakhir adalah melakukan **Verifikasi Manual** oleh Admin.
+            </p>
+            
+            <div style="background: rgba(255,255,255,0.05); padding: 1.5rem; border-radius: 12px; margin-bottom: 2rem; border: 1px dashed var(--glass-border);">
+                <p style="font-size: 0.9rem; margin-bottom: 1rem;">Klik tombol di bawah untuk mengirim data Anda ke WhatsApp Admin & mendapatkan kode verifikasi.</p>
+                <a href="{{ wa_url }}" target="_blank" class="btn btn-primary" style="background: #25d366; border: none; width: 100%;">
+                    <i class="fab fa-whatsapp"></i> KIRIM DATA KE ADMIN
+                </a>
+            </div>
+            
+            <a href="/verify?username={{ username }}" class="btn btn-secondary" style="width: 100%;">
+                SAYA SUDAH PUNYA KODE VERIFIKASI
+            </a>
+        </div>
+    </div>
+</body>
+</html>

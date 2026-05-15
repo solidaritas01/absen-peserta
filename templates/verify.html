@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verifikasi Akun</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body class="theme-midnight">
+    <div class="container" style="max-width: 450px; margin-top: 15vh;">
+        <div class="glass-card" style="text-align: center;">
+            <div class="logo-container">
+                <i class="fas fa-shield-alt" style="font-size: 3rem; color: var(--warning);"></i>
+            </div>
+            <h2 class="gradient-text">Verifikasi Akun</h2>
+            <p style="color: var(--text-muted); margin-bottom: 2rem;">Masukkan 9 digit kode unik yang Anda terima dari Admin</p>
+            
+            <form action="/verify" method="POST">
+                <div class="form-group" style="text-align: left;">
+                    <label>Username</label>
+                    <input type="text" name="username" value="{{ username }}" required readonly style="background: rgba(0,0,0,0.2); cursor: not-allowed;">
+                </div>
+                <div class="form-group" style="text-align: left;">
+                    <label>Kode Verifikasi (9 Digit)</label>
+                    <input type="text" name="code" maxlength="9" required placeholder="Contoh: 123456789" style="letter-spacing: 5px; text-align: center; font-size: 1.2rem; font-weight: bold;">
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+                    AKTIFKAN AKUN SAYA
+                </button>
+            </form>
+            
+            <p style="margin-top: 2rem; font-size: 0.8rem; color: var(--text-muted);">
+                Belum dapat kode? <a href="https://wa.me/081249132140" style="color: var(--secondary); text-decoration: none;">Hubungi Admin</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>
