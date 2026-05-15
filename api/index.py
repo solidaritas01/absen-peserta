@@ -4,6 +4,7 @@ import pandas as pd
 import qrcode
 import os
 import io
+import sys
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -11,167 +12,194 @@ import urllib.parse
 import random
 
 # Postgres Support
+HAS_POSTGRES_LIB = False
 try:
     import psycopg2
     import psycopg2.extras
-    HAS_POSTGRES = True
+    HAS_POSTGRES_LIB = True
 except ImportError:
-    HAS_POSTGRES = False
+    print("Warning: psycopg2 not found. Falling back to SQLite.", file=sys.stderr)
 
 # Adjust folders for Vercel structure
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.secret_key = os.environ.get('SECRET_KEY', 'super-secret-key-change-this')
 app.config['ADMIN_PHONE'] = '081249132140' # Secret Admin Number
 
-# Database Configuration
-IS_VERCEL = os.environ.get('VERCEL')
-POSTGRES_URL = os.environ.get('POSTGRES_URL')
+# Database Configuration Detection
+def get_postgres_url():
+    # Try common Vercel/Prisma environment variable names
+    candidates = [
+        'POSTGRES_URL', 
+        'DATABASE_URL', 
+        'STORAGE_POSTGRES_URL', 
+        'POSTGRES_URL_NON_POOLING',
+        'PRISMA_DATABASE_URL'
+    ]
+    for c in candidates:
+        url = os.environ.get(c)
+        if url:
+            # Psycopg2 needs 'postgres://' or 'postgresql://'
+            # Sometimes Vercel provides urls starting with 'postgres://' which is fine
+            return url
+    return None
 
-if IS_VERCEL and POSTGRES_URL:
+IS_VERCEL = os.environ.get('VERCEL')
+DB_URL = get_postgres_url()
+
+if IS_VERCEL and DB_URL and HAS_POSTGRES_LIB:
     DB_TYPE = 'postgres'
-    # Vercel Postgres URL usually starts with postgres://, psycopg2 needs it
-    DB_PATH = POSTGRES_URL
+    DB_PATH = DB_URL
     app.config['UPLOAD_FOLDER'] = '/tmp/uploads'
+    print(f"INFO: Using PostgreSQL database from environment variable.", file=sys.stderr)
 else:
     DB_TYPE = 'sqlite'
     app.config['DATABASE'] = 'database.db'
     app.config['UPLOAD_FOLDER'] = 'static/uploads'
+    if IS_VERCEL:
+        print("WARNING: Running on Vercel but no Postgres URL found or lib missing. Using temporary SQLite.", file=sys.stderr)
+    else:
+        print("INFO: Running locally. Using SQLite.", file=sys.stderr)
 
 # Ensure folders exist
 if not os.path.exists(app.config['UPLOAD_FOLDER']):
     os.makedirs(app.config['UPLOAD_FOLDER'])
 
 def get_db():
-    if DB_TYPE == 'postgres':
-        conn = psycopg2.connect(DB_PATH)
-        return conn
-    else:
-        conn = sqlite3.connect(app.config['DATABASE'])
-        conn.row_factory = sqlite3.Row
-        return conn
+    try:
+        if DB_TYPE == 'postgres':
+            # Handle potential SSL requirement for Neon/Vercel Postgres
+            if "sslmode" not in DB_PATH:
+                joiner = "&" if "?" in DB_PATH else "?"
+                conn_url = f"{DB_PATH}{joiner}sslmode=require"
+            else:
+                conn_url = DB_PATH
+            return psycopg2.connect(conn_url)
+        else:
+            conn = sqlite3.connect(app.config['DATABASE'])
+            conn.row_factory = sqlite3.Row
+            return conn
+    except Exception as e:
+        print(f"CRITICAL: Database connection failed: {str(e)}", file=sys.stderr)
+        raise e
 
 def query_db(query, args=(), one=False):
     conn = get_db()
-    # Convert ? to %s for Postgres
-    if DB_TYPE == 'postgres':
-        query = query.replace('?', '%s')
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-    else:
-        cur = conn.execute(query, args)
-    
-    if DB_TYPE == 'postgres':
+    try:
+        if DB_TYPE == 'postgres':
+            query = query.replace('?', '%s')
+            cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        else:
+            cur = conn.cursor() # sqlite cursor
+        
         cur.execute(query, args)
         rv = cur.fetchall()
-    else:
-        rv = cur.fetchall()
-    
-    conn.commit()
-    cur.close()
-    conn.close()
-    return (rv[0] if rv else None) if one else rv
+        conn.commit()
+        return (rv[0] if rv else None) if one else rv
+    finally:
+        conn.close()
 
 def execute_db(query, args=()):
     conn = get_db()
-    if DB_TYPE == 'postgres':
-        query = query.replace('?', '%s')
-        cur = conn.cursor()
-        cur.execute(query, args)
-        lastrowid = None
-        if "INSERT" in query.upper() and "RETURNING" in query.upper():
-            lastrowid = cur.fetchone()[0]
-    else:
-        cur = conn.execute(query, args)
-        lastrowid = cur.lastrowid
-    
-    conn.commit()
-    cur.close()
-    conn.close()
-    return lastrowid
+    try:
+        if DB_TYPE == 'postgres':
+            query = query.replace('?', '%s')
+            cur = conn.cursor()
+            cur.execute(query, args)
+            lastrowid = None
+            if "INSERT" in query.upper():
+                # For postgres, we often need RETURNING id to get the ID reliably
+                # but if not provided, we try to get it if possible or skip
+                try:
+                    if "RETURNING" in query.upper():
+                        lastrowid = cur.fetchone()[0]
+                except:
+                    pass
+        else:
+            cur = conn.execute(query, args)
+            lastrowid = cur.lastrowid
+        
+        conn.commit()
+        return lastrowid
+    finally:
+        conn.close()
 
 def init_db():
     conn = get_db()
-    cur = conn.cursor()
-    
-    # Use SERIAL for Postgres, AUTOINCREMENT for SQLite
-    pk_type = "SERIAL PRIMARY KEY" if DB_TYPE == 'postgres' else "INTEGER PRIMARY KEY AUTOINCREMENT"
-    
-    cur.execute(f'''
-        CREATE TABLE IF NOT EXISTS users (
-            id {pk_type},
-            username TEXT UNIQUE NOT NULL,
-            password TEXT NOT NULL,
-            full_name TEXT,
-            address TEXT,
-            phone_number TEXT,
-            is_active INTEGER DEFAULT 0,
-            verification_code TEXT,
-            raw_password TEXT,
-            last_login TEXT,
-            is_banned INTEGER DEFAULT 0
-        )
-    ''')
-    
-    # Migration helper for both DB types
-    cols = [('full_name', 'TEXT'), ('address', 'TEXT'), 
-            ('phone_number', 'TEXT'), ('is_active', 'INTEGER DEFAULT 0'),
-            ('verification_code', 'TEXT'), ('raw_password', 'TEXT'),
-            ('last_login', 'TEXT'), ('is_banned', 'INTEGER DEFAULT 0')]
-    
-    for col, dtype in cols:
-        try:
-            cur.execute(f'ALTER TABLE users ADD COLUMN {col} {dtype}')
-        except:
-            pass
+    try:
+        cur = conn.cursor()
+        pk_type = "SERIAL PRIMARY KEY" if DB_TYPE == 'postgres' else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        
+        cur.execute(f'''
+            CREATE TABLE IF NOT EXISTS users (
+                id {pk_type},
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                full_name TEXT,
+                address TEXT,
+                phone_number TEXT,
+                is_active INTEGER DEFAULT 0,
+                verification_code TEXT,
+                raw_password TEXT,
+                last_login TEXT,
+                is_banned INTEGER DEFAULT 0
+            )
+        ''')
+        
+        cols = [('full_name', 'TEXT'), ('address', 'TEXT'), 
+                ('phone_number', 'TEXT'), ('is_active', 'INTEGER DEFAULT 0'),
+                ('verification_code', 'TEXT'), ('raw_password', 'TEXT'),
+                ('last_login', 'TEXT'), ('is_banned', 'INTEGER DEFAULT 0')]
+        
+        for col, dtype in cols:
+            try:
+                cur.execute(f'ALTER TABLE users ADD COLUMN {col} {dtype}')
+            except:
+                pass
 
-    # Create default admin
-    cur.execute('SELECT * FROM users WHERE username = %s' if DB_TYPE == 'postgres' else 'SELECT * FROM users WHERE username = ?', ('admin',))
-    if not cur.fetchone():
-        hashed_admin = generate_password_hash('admin123')
-        cur.execute('''
-            INSERT INTO users (username, password, full_name, is_active) 
-            VALUES (%s, %s, %s, %s)
-        ''' if DB_TYPE == 'postgres' else '''
-            INSERT INTO users (username, password, full_name, is_active) 
-            VALUES (?, ?, ?, ?)
-        ''', ('admin', hashed_admin, 'Super Admin', 1))
+        # Create default admin
+        admin_query = 'SELECT * FROM users WHERE username = %s' if DB_TYPE == 'postgres' else 'SELECT * FROM users WHERE username = ?'
+        cur.execute(admin_query, ('admin',))
+        if not cur.fetchone():
+            hashed_admin = generate_password_hash('admin123')
+            insert_query = '''INSERT INTO users (username, password, full_name, is_active) VALUES (%s, %s, %s, %s)''' if DB_TYPE == 'postgres' else '''INSERT INTO users (username, password, full_name, is_active) VALUES (?, ?, ?, ?)'''
+            cur.execute(insert_query, ('admin', hashed_admin, 'Super Admin', 1))
 
-    cur.execute(f'''
-        CREATE TABLE IF NOT EXISTS settings (
-            id {pk_type},
-            user_id INTEGER NOT NULL,
-            activity_name TEXT,
-            activity_schedule TEXT,
-            theme_type TEXT DEFAULT 'gradient_animated',
-            theme_color_1 TEXT DEFAULT '#4f46e5',
-            theme_color_2 TEXT DEFAULT '#06b6d4',
-            theme_preset TEXT DEFAULT 'ocean',
-            theme_animation TEXT DEFAULT 'flow'
-        )
-    ''')
+        cur.execute(f'''
+            CREATE TABLE IF NOT EXISTS settings (
+                id {pk_type},
+                user_id INTEGER NOT NULL,
+                activity_name TEXT,
+                activity_schedule TEXT,
+                theme_type TEXT DEFAULT 'gradient_animated',
+                theme_color_1 TEXT DEFAULT '#4f46e5',
+                theme_color_2 TEXT DEFAULT '#06b6d4',
+                theme_preset TEXT DEFAULT 'ocean',
+                theme_animation TEXT DEFAULT 'flow'
+            )
+        ''')
 
-    cur.execute(f'''
-        CREATE TABLE IF NOT EXISTS logos (
-            id {pk_type},
-            user_id INTEGER NOT NULL,
-            filename TEXT NOT NULL
-        )
-    ''')
+        cur.execute(f'''
+            CREATE TABLE IF NOT EXISTS logos (
+                id {pk_type},
+                user_id INTEGER NOT NULL,
+                filename TEXT NOT NULL
+            )
+        ''')
 
-    cur.execute(f'''
-        CREATE TABLE IF NOT EXISTS participants (
-            id {pk_type},
-            user_id INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            status TEXT DEFAULT 'Tidak/Belum Hadir',
-            attendance_time TEXT,
-            permission_reason TEXT,
-            delay_time TEXT
-        )
-    ''')
-    
-    conn.commit()
-    cur.close()
-    conn.close()
+        cur.execute(f'''
+            CREATE TABLE IF NOT EXISTS participants (
+                id {pk_type},
+                user_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                status TEXT DEFAULT 'Tidak/Belum Hadir',
+                attendance_time TEXT,
+                permission_reason TEXT,
+                delay_time TEXT
+            )
+        ''')
+        conn.commit()
+    finally:
+        conn.close()
 
 # --- Auth Routes ---
 @app.route('/register', methods=['GET', 'POST'])
@@ -194,7 +222,6 @@ def register():
         hashed_pw = generate_password_hash(password)
         
         try:
-            # Postgres needs RETURNING id to get lastrowid easily in one go
             q = '''INSERT INTO users (username, password, full_name, address, phone_number, verification_code, raw_password, is_active) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, 0)'''
             if DB_TYPE == 'postgres': q += " RETURNING id"
@@ -209,6 +236,7 @@ def register():
             
             return render_template('register_waiting.html', username=username, wa_url=wa_url)
         except Exception as e:
+            print(f"Registration Error: {str(e)}", file=sys.stderr)
             return f"Error: {str(e)}", 400
     return render_template('register.html')
 
@@ -239,11 +267,14 @@ def login():
                 return render_template('login.html', error=error)
 
             if user['last_login']:
-                last_login_dt = datetime.fromisoformat(user['last_login'])
-                if datetime.now() - last_login_dt > timedelta(days=90):
-                    execute_db('UPDATE users SET is_banned = 1 WHERE id = ?', (user['id'],))
-                    error = "Akun Anda telah kedaluwarsa (tidak aktif 3 bulan). Silakan daftar ulang."
-                    return render_template('login.html', error=error)
+                try:
+                    last_login_dt = datetime.fromisoformat(user['last_login'])
+                    if datetime.now() - last_login_dt > timedelta(days=90):
+                        execute_db('UPDATE users SET is_banned = 1 WHERE id = ?', (user['id'],))
+                        error = "Akun Anda telah kedaluwarsa (tidak aktif 3 bulan). Silakan daftar ulang."
+                        return render_template('login.html', error=error)
+                except:
+                    pass
 
             if user['is_active'] == 0:
                 return redirect(url_for('verify', username=username))
@@ -417,19 +448,18 @@ def export_participants():
     if 'user_id' not in session: return redirect(url_for('login'))
     u_id = session['user_id']
     
-    # Pandas read_sql works best with the raw connection
+    # Use raw connection for pandas
     conn = get_db()
-    if DB_TYPE == 'postgres':
-        df = pd.read_sql_query('SELECT name, status, attendance_time, delay_time, permission_reason FROM participants WHERE user_id=%s', conn, params=(u_id,))
-    else:
-        df = pd.read_sql_query('SELECT name, status, attendance_time, delay_time, permission_reason FROM participants WHERE user_id=?', conn, params=(u_id,))
-    
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Absensi')
-    output.seek(0)
-    conn.close()
-    return send_file(output, download_name="data_absensi.xlsx", as_attachment=True)
+    try:
+        p_char = "%s" if DB_TYPE == 'postgres' else "?"
+        df = pd.read_sql_query(f'SELECT name, status, attendance_time, delay_time, permission_reason FROM participants WHERE user_id={p_char}', conn, params=(u_id,))
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name='Absensi')
+        output.seek(0)
+        return send_file(output, download_name="data_absensi.xlsx", as_attachment=True)
+    finally:
+        conn.close()
 
 @app.route('/api/qrcode')
 def get_qrcode():
