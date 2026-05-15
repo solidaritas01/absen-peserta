@@ -28,7 +28,8 @@ app.config['ADMIN_PHONE'] = '081249132140'
 CACHED_DB_TYPE = None
 
 def get_db_url():
-    candidates = ['POSTGRES_URL', 'DATABASE_URL', 'STORAGE_POSTGRES_URL', 'PRISMA_DATABASE_URL']
+    candidates = ['POSTGRES_URL', 'DATABASE_URL', 'STORAGE_POSTGRES_URL', 'PRISMA_DATABASE_URL', 'POSTGRES_URL_NON_POOLING']
+    # Check Vercel Postgres specific env vars
     for c in candidates:
         url = os.environ.get(c)
         if url: return url
@@ -41,8 +42,6 @@ def connect_db():
     
     if is_vercel and url and HAS_PG_LIB:
         try:
-            # Parse URL manually for pg8000
-            # Format: postgresql://user:pass@host:port/dbname
             parsed = urllib.parse.urlparse(url)
             conn = pg8000.native.Connection(
                 user=parsed.username,
@@ -57,6 +56,11 @@ def connect_db():
             return conn, 'postgres'
         except Exception as e:
             print(f"Postgres Connection Error: {str(e)}", file=sys.stderr)
+            # Try psycopg2 style connection string fallback for pg8000 if parsing failed
+            try:
+                # pg8000 native doesn't accept full URL strings, so we must parse
+                pass
+            except: pass
     
     # SQLite Fallback
     path = 'database.db' if not is_vercel else '/tmp/database.db'
@@ -69,8 +73,6 @@ def query_db(query, args=(), one=False):
     conn, db_type = connect_db()
     try:
         if db_type == 'postgres':
-            # pg8000 uses :1, :2 placeholders or we can use mapping
-            # Simplest for this app: replace ? with :param
             params = {}
             for i, arg in enumerate(args):
                 pname = f"p{i}"
@@ -78,7 +80,6 @@ def query_db(query, args=(), one=False):
                 params[pname] = arg
             
             res = conn.run(query, **params)
-            # res is a list of lists. We need to convert to list of dicts for compatibility
             columns = [c['name'] for c in conn.columns]
             rv = [dict(zip(columns, row)) for row in res]
         else:
@@ -102,7 +103,6 @@ def execute_db(query, args=()):
                 query = query.replace('?', f":{pname}", 1)
                 params[pname] = arg
             
-            # For inserts with return
             if "INSERT" in query.upper() and "RETURNING" not in query.upper():
                 query += " RETURNING id"
             
@@ -119,13 +119,11 @@ def init_db():
     conn, db_type = connect_db()
     try:
         if db_type == 'postgres':
-            # pg8000 uses native methods
             conn.run("CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, full_name TEXT, address TEXT, phone_number TEXT, is_active INTEGER DEFAULT 0, verification_code TEXT, raw_password TEXT, last_login TEXT, is_banned INTEGER DEFAULT 0)")
             for col, dtype in [('full_name', 'TEXT'), ('address', 'TEXT'), ('phone_number', 'TEXT'), ('is_active', 'INTEGER DEFAULT 0'), ('verification_code', 'TEXT'), ('raw_password', 'TEXT'), ('last_login', 'TEXT'), ('is_banned', 'INTEGER DEFAULT 0')]:
                 try: conn.run(f"ALTER TABLE users ADD COLUMN {col} {dtype}")
                 except: pass
             
-            # Default Admin
             exists = conn.run("SELECT id FROM users WHERE username = 'admin'")
             if not exists:
                 hpw = generate_password_hash('admin123')
@@ -137,12 +135,10 @@ def init_db():
         else:
             cur = conn.cursor()
             cur.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, is_active INTEGER DEFAULT 0)")
-            # Run migrations for SQLite
             for col, dtype in [('full_name', 'TEXT'), ('address', 'TEXT'), ('phone_number', 'TEXT'), ('is_active', 'INTEGER DEFAULT 0'), ('verification_code', 'TEXT'), ('raw_password', 'TEXT'), ('last_login', 'TEXT'), ('is_banned', 'INTEGER DEFAULT 0')]:
                 try: cur.execute(f"ALTER TABLE users ADD COLUMN {col} {dtype}")
                 except: pass
             
-            # Default Admin
             cur.execute("SELECT id FROM users WHERE username = 'admin'")
             if not cur.fetchone():
                 hpw = generate_password_hash('admin123')
@@ -156,6 +152,20 @@ def init_db():
         conn.close()
 
 # --- Routes ---
+@app.route('/api/debug')
+def debug_info():
+    url = get_db_url()
+    conn, db_type = connect_db()
+    conn.close()
+    return jsonify({
+        "vercel": os.environ.get('VERCEL'),
+        "has_pg8000": HAS_PG_LIB,
+        "url_found": bool(url),
+        "url_prefix": url[:15] if url else None,
+        "active_db": db_type,
+        "env_keys": list(os.environ.keys())
+    })
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     init_db()
@@ -329,9 +339,6 @@ def export_participants():
     conn, db_type = connect_db()
     try:
         p = "%s" if db_type == 'postgres' else "?"
-        # pg8000 native connection isn't directly compatible with pandas.read_sql
-        # but we can use our query_db or a fresh connection with a compatible driver
-        # For simplicity, since export is admin only, we'll just return the query results
         data = query_db(f'SELECT name, status, attendance_time, delay_time, permission_reason FROM participants WHERE user_id={p}', (u_id,))
         df = pd.DataFrame(data)
         output = io.BytesIO()
