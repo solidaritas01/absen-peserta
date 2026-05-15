@@ -247,14 +247,17 @@ def api_settings():
     init_db()
     u_id = session.get('user_id') or request.args.get('user_id')
     if not u_id: return jsonify({"status": "error"}), 401
+    u_id = int(u_id)
     if request.method == 'POST':
         if 'user_id' not in session: return jsonify({"status": "error"}), 401
         execute_db('UPDATE settings SET activity_name=?, activity_schedule=?, theme_type=?, theme_color_1=?, theme_color_2=?, theme_preset=?, theme_animation=? WHERE user_id=?', (request.form.get('activity_name'), request.form.get('activity_schedule'), request.form.get('theme_type'), request.form.get('theme_color_1'), request.form.get('theme_color_2'), request.form.get('theme_preset'), request.form.get('theme_animation'), u_id))
         logos = request.files.getlist('activity_logos')
+        folder = 'static/uploads' if not os.environ.get('VERCEL') else '/tmp/uploads'
+        if not os.path.exists(folder):
+            os.makedirs(folder, exist_ok=True)
         for logo in logos:
             if logo and logo.filename:
                 fn = secure_filename(f"{u_id}_{datetime.now().timestamp()}_{logo.filename}")
-                folder = 'static/uploads' if not os.environ.get('VERCEL') else '/tmp/uploads'
                 logo.save(os.path.join(folder, fn))
                 execute_db('INSERT INTO logos (user_id, filename) VALUES (?, ?)', (u_id, fn))
         return jsonify({"status": "success"})
@@ -296,7 +299,7 @@ def ban_user():
 def get_participants():
     u_id = session.get('user_id') or request.args.get('user_id')
     if not u_id: return jsonify([]), 401
-    return jsonify(query_db('SELECT * FROM participants WHERE user_id=?', (u_id,)))
+    return jsonify(query_db('SELECT * FROM participants WHERE user_id=?', (int(u_id),)))
 
 @app.route('/api/participants/import', methods=['POST'])
 def import_participants():
@@ -317,7 +320,7 @@ def reset_participants():
 @app.route('/api/attendance', methods=['POST'])
 def mark_attendance():
     data = request.json
-    u_id = data.get('user_id')
+    u_id = int(data.get('user_id'))
     s = query_db('SELECT activity_schedule FROM settings WHERE user_id=?', (u_id,), one=True)
     if not s: return jsonify({"status": "error"}), 404
     now = datetime.now()
