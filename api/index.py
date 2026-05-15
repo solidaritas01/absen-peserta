@@ -5,6 +5,7 @@ import qrcode
 import os
 import io
 import sys
+import traceback
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -18,16 +19,13 @@ try:
     import psycopg2.extras
     HAS_POSTGRES_LIB = True
 except ImportError:
-    print("Warning: psycopg2 not found. Falling back to SQLite.", file=sys.stderr)
+    print("Warning: psycopg2 not found.", file=sys.stderr)
 
-# Adjust folders for Vercel structure
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.secret_key = os.environ.get('SECRET_KEY', 'super-secret-key-change-this')
-app.config['ADMIN_PHONE'] = '081249132140' # Secret Admin Number
+app.config['ADMIN_PHONE'] = '081249132140' 
 
-# Database Configuration Detection
-def get_postgres_url():
-    # Try common Vercel/Prisma environment variable names
+def get_db_config():
     candidates = [
         'POSTGRES_URL', 
         'DATABASE_URL', 
@@ -38,58 +36,46 @@ def get_postgres_url():
     for c in candidates:
         url = os.environ.get(c)
         if url:
-            # Psycopg2 needs 'postgres://' or 'postgresql://'
-            # Sometimes Vercel provides urls starting with 'postgres://' which is fine
             return url
     return None
 
-IS_VERCEL = os.environ.get('VERCEL')
-DB_URL = get_postgres_url()
-
-if IS_VERCEL and DB_URL and HAS_POSTGRES_LIB:
-    DB_TYPE = 'postgres'
-    DB_PATH = DB_URL
-    app.config['UPLOAD_FOLDER'] = '/tmp/uploads'
-    print(f"INFO: Using PostgreSQL database from environment variable.", file=sys.stderr)
-else:
-    DB_TYPE = 'sqlite'
-    app.config['DATABASE'] = 'database.db'
-    app.config['UPLOAD_FOLDER'] = 'static/uploads'
-    if IS_VERCEL:
-        print("WARNING: Running on Vercel but no Postgres URL found or lib missing. Using temporary SQLite.", file=sys.stderr)
-    else:
-        print("INFO: Running locally. Using SQLite.", file=sys.stderr)
-
-# Ensure folders exist
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
-
 def get_db():
-    try:
-        if DB_TYPE == 'postgres':
-            # Handle potential SSL requirement for Neon/Vercel Postgres
-            if "sslmode" not in DB_PATH:
-                joiner = "&" if "?" in DB_PATH else "?"
-                conn_url = f"{DB_PATH}{joiner}sslmode=require"
-            else:
-                conn_url = DB_PATH
-            return psycopg2.connect(conn_url)
-        else:
-            conn = sqlite3.connect(app.config['DATABASE'])
-            conn.row_factory = sqlite3.Row
-            return conn
-    except Exception as e:
-        print(f"CRITICAL: Database connection failed: {str(e)}", file=sys.stderr)
-        raise e
+    db_url = get_db_config()
+    is_vercel = os.environ.get('VERCEL')
+    
+    # Try Postgres first if available
+    if is_vercel and db_url and HAS_POSTGRES_LIB:
+        try:
+            # Fix URL prefix if needed
+            if db_url.startswith("postgres://"):
+                db_url = db_url.replace("postgres://", "postgresql://", 1)
+            
+            # Handle SSL
+            if "sslmode" not in db_url:
+                joiner = "&" if "?" in db_url else "?"
+                db_url = f"{db_url}{joiner}sslmode=require"
+            
+            conn = psycopg2.connect(db_url, connect_timeout=10)
+            return conn, 'postgres'
+        except Exception as e:
+            print(f"ERROR: Failed to connect to Postgres: {str(e)}", file=sys.stderr)
+            print(traceback.format_exc(), file=sys.stderr)
+            # Fall through to SQLite
+    
+    # Fallback to SQLite
+    sqlite_path = 'database.db' if not is_vercel else '/tmp/database.db'
+    conn = sqlite3.connect(sqlite_path)
+    conn.row_factory = sqlite3.Row
+    return conn, 'sqlite'
 
 def query_db(query, args=(), one=False):
-    conn = get_db()
+    conn, db_type = get_db()
     try:
-        if DB_TYPE == 'postgres':
+        if db_type == 'postgres':
             query = query.replace('?', '%s')
             cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         else:
-            cur = conn.cursor() # sqlite cursor
+            cur = conn.cursor()
         
         cur.execute(query, args)
         rv = cur.fetchall()
@@ -99,21 +85,15 @@ def query_db(query, args=(), one=False):
         conn.close()
 
 def execute_db(query, args=()):
-    conn = get_db()
+    conn, db_type = get_db()
     try:
-        if DB_TYPE == 'postgres':
+        if db_type == 'postgres':
             query = query.replace('?', '%s')
             cur = conn.cursor()
             cur.execute(query, args)
             lastrowid = None
-            if "INSERT" in query.upper():
-                # For postgres, we often need RETURNING id to get the ID reliably
-                # but if not provided, we try to get it if possible or skip
-                try:
-                    if "RETURNING" in query.upper():
-                        lastrowid = cur.fetchone()[0]
-                except:
-                    pass
+            if "INSERT" in query.upper() and "RETURNING" in query.upper():
+                lastrowid = cur.fetchone()[0]
         else:
             cur = conn.execute(query, args)
             lastrowid = cur.lastrowid
@@ -124,10 +104,10 @@ def execute_db(query, args=()):
         conn.close()
 
 def init_db():
-    conn = get_db()
+    conn, db_type = get_db()
     try:
         cur = conn.cursor()
-        pk_type = "SERIAL PRIMARY KEY" if DB_TYPE == 'postgres' else "INTEGER PRIMARY KEY AUTOINCREMENT"
+        pk_type = "SERIAL PRIMARY KEY" if db_type == 'postgres' else "INTEGER PRIMARY KEY AUTOINCREMENT"
         
         cur.execute(f'''
             CREATE TABLE IF NOT EXISTS users (
@@ -156,12 +136,12 @@ def init_db():
             except:
                 pass
 
-        # Create default admin
-        admin_query = 'SELECT * FROM users WHERE username = %s' if DB_TYPE == 'postgres' else 'SELECT * FROM users WHERE username = ?'
+        # Admin User
+        admin_query = 'SELECT * FROM users WHERE username = %s' if db_type == 'postgres' else 'SELECT * FROM users WHERE username = ?'
         cur.execute(admin_query, ('admin',))
         if not cur.fetchone():
             hashed_admin = generate_password_hash('admin123')
-            insert_query = '''INSERT INTO users (username, password, full_name, is_active) VALUES (%s, %s, %s, %s)''' if DB_TYPE == 'postgres' else '''INSERT INTO users (username, password, full_name, is_active) VALUES (?, ?, ?, ?)'''
+            insert_query = '''INSERT INTO users (username, password, full_name, is_active) VALUES (%s, %s, %s, %s)''' if db_type == 'postgres' else '''INSERT INTO users (username, password, full_name, is_active) VALUES (?, ?, ?, ?)'''
             cur.execute(insert_query, ('admin', hashed_admin, 'Super Admin', 1))
 
         cur.execute(f'''
@@ -224,7 +204,7 @@ def register():
         try:
             q = '''INSERT INTO users (username, password, full_name, address, phone_number, verification_code, raw_password, is_active) 
                    VALUES (?, ?, ?, ?, ?, ?, ?, 0)'''
-            if DB_TYPE == 'postgres': q += " RETURNING id"
+            if get_db()[1] == 'postgres': q += " RETURNING id"
             
             u_id = execute_db(q, (username, hashed_pw, full_name, address, phone, v_code, password))
             
@@ -236,7 +216,6 @@ def register():
             
             return render_template('register_waiting.html', username=username, wa_url=wa_url)
         except Exception as e:
-            print(f"Registration Error: {str(e)}", file=sys.stderr)
             return f"Error: {str(e)}", 400
     return render_template('register.html')
 
@@ -292,7 +271,6 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
-# --- Dashboard ---
 @app.route('/')
 def admin():
     init_db()
@@ -336,7 +314,8 @@ def api_settings():
             if logo and logo.filename != '':
                 if not logo.filename.lower().endswith('.png'): continue
                 filename = secure_filename(f"{u_id}_{datetime.now().timestamp()}_{logo.filename}")
-                logo.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                upload_folder = 'static/uploads' if not os.environ.get('VERCEL') else '/tmp/uploads'
+                logo.save(os.path.join(upload_folder, filename))
                 execute_db('INSERT INTO logos (user_id, filename) VALUES (?, ?)', (u_id, filename))
         return jsonify({"status": "success"})
     
@@ -351,8 +330,9 @@ def reset_logos():
     if 'user_id' not in session: return jsonify({"status": "error"}), 401
     u_id = session['user_id']
     logos = query_db('SELECT filename FROM logos WHERE user_id=?', (u_id,))
+    upload_folder = 'static/uploads' if not os.environ.get('VERCEL') else '/tmp/uploads'
     for logo in logos:
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], logo['filename'])
+        file_path = os.path.join(upload_folder, logo['filename'])
         if os.path.exists(file_path): os.remove(file_path)
     execute_db('DELETE FROM logos WHERE user_id=?', (u_id,))
     return jsonify({"status": "success"})
@@ -447,11 +427,9 @@ def mark_attendance():
 def export_participants():
     if 'user_id' not in session: return redirect(url_for('login'))
     u_id = session['user_id']
-    
-    # Use raw connection for pandas
-    conn = get_db()
+    conn, db_type = get_db()
     try:
-        p_char = "%s" if DB_TYPE == 'postgres' else "?"
+        p_char = "%s" if db_type == 'postgres' else "?"
         df = pd.read_sql_query(f'SELECT name, status, attendance_time, delay_time, permission_reason FROM participants WHERE user_id={p_char}', conn, params=(u_id,))
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
