@@ -172,10 +172,10 @@ function exportExcel() {
 }
 
 async function resetData() {
-    if (confirm('Apakah anda yakin ingin menghapus SEMUA data peserta?')) {
+    if (confirm('Apakah anda yakin ingin mereset data kehadiran peserta?')) {
         const response = await fetch('/api/participants/reset', { method: 'POST' });
         if (response.ok) {
-            alert('Data berhasil direset.');
+            alert('Data kehadiran berhasil direset.');
             loadAdminData();
         }
     }

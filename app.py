@@ -349,7 +349,7 @@ def reset_participants():
     if 'user_id' not in session: return jsonify({"status": "error"}), 401
     u_id = session['user_id']
     conn = get_db()
-    conn.execute('DELETE FROM participants WHERE user_id=?', (u_id,))
+    conn.execute('UPDATE participants SET status="Tidak/Belum Hadir", attendance_time=NULL, permission_reason=NULL, delay_time=NULL WHERE user_id=?', (u_id,))
     conn.commit()
     return jsonify({"status": "success"})
 

@@ -329,7 +329,7 @@ def import_participants():
 @app.route('/api/participants/reset', methods=['POST'])
 def reset_participants():
     if 'user_id' not in session: return jsonify({"status": "error"}), 401
-    execute_db('DELETE FROM participants WHERE user_id=?', (session['user_id'],))
+    execute_db('UPDATE participants SET status="Tidak/Belum Hadir", attendance_time=NULL, permission_reason=NULL, delay_time=NULL WHERE user_id=?', (session['user_id'],))
     return jsonify({"status": "success"})
 
 @app.route('/api/attendance', methods=['POST'])
